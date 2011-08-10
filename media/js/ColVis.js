@@ -136,6 +136,14 @@ ColVis = function( oDTSettings, oInit )
 		 *  @default  Restore original
 		 */
 		"sRestore": "Restore original",
+
+		/**
+		 * Use overlay
+		 *  @property bOverlay
+		 *  @type     Boolean
+		 *  @default  true
+		 */
+		"bOverlay": true,
 		
 		/**
 		 * Overlay animation duration in mS
@@ -297,7 +305,7 @@ ColVis.prototype = {
 		
 		this.dom.catcher = this._fnDomCatcher();
 		this.dom.collection = this._fnDomCollection();
-		this.dom.background = this._fnDomBackground();
+		this.s.bOverlay && (this.dom.background = this._fnDomBackground());
 		
 		this._fnAddButtons();
 		
@@ -315,8 +323,8 @@ ColVis.prototype = {
 			"sName": "ColVis"
 		} );
 	},
-	
-	
+
+
 	/**
 	 * Apply any customisation to the settings from the DataTables initialisation
 	 *  @method  _fnApplyCustomisation
@@ -361,7 +369,12 @@ ColVis.prototype = {
 		{
 			this.s.fnStateChange = oConfig.fnStateChange;
 		}
-		
+
+		if ( typeof oConfig.bOverlay != 'undefined' )
+		{
+			this.s.bOverlay = oConfig.bOverlay;
+		}
+
 		if ( typeof oConfig.iOverlayFade != 'undefined' )
 		{
 			this.s.iOverlayFade = oConfig.iOverlayFade;
@@ -377,8 +390,8 @@ ColVis.prototype = {
 			this.s.sSize = oConfig.sSize;
 		}
 	},
-	
-	
+
+
 	/**
 	 * On each table draw, check the visiblity checkboxes as needed. This allows any process to
 	 * update the table's column visiblity and ColVis will still be accurate.
@@ -404,6 +417,74 @@ ColVis.prototype = {
 				}
 			}
 		}
+	},
+
+
+	/**
+	 * Hide the collection on document click.
+	 *  @method  _fnDomClick
+	 *  @returns void
+	 *  @private
+	 */
+	"_fnDomClick": function (e)
+	{
+		var that = this;
+		function mClick(e)
+		{
+			if(!that.s.hidden)
+			{
+				e.preventDefault();
+				e.stopPropagation();
+				var target = e.target,
+						element = that.dom.collection;
+				do
+				{
+					if(element == target)
+					{
+						return false;
+					}
+					target = target.parentNode;
+				} while (target);
+				that._fnCollectionHide.call( that, null, null );
+				$(document).unbind('mousedown', mClick);
+			}
+		}
+		$(document).mousedown(mClick);
+	},
+
+
+	/**
+	 * Hide the collection on document mouseover.
+	 *  @method  _fnDomOver
+	 *  @returns void
+	 *  @private
+	 */
+	"_fnDomOver" : function()
+	{
+		var that = this;
+		function mOver(e)
+		{
+			if(!that.s.hidden)
+			{
+				e.preventDefault();
+				e.stopPropagation();
+				var target	= e.target,
+						element = that.dom.collection,
+						catcher = that.dom.catcher,
+						button	= that.dom.button;
+				do
+				{
+					if(element == target || catcher == target || button == target)
+					{
+						return false;
+					}
+					target = target.parentNode;
+				} while (target);
+				that._fnCollectionHide.call( that, null, null );
+				$(document).unbind('mouseover', mOver);
+			}
+		}
+		$(document).mouseover(mOver);
 	},
 	
 	
@@ -561,6 +642,10 @@ ColVis.prototype = {
 		nSpan.innerHTML = text;
 		
 		$(nButton).bind( sEvent, function (e) {
+			if(!that.s.bOverlay)
+			{
+				(that.s.activate === 'mouseover') ? that._fnDomOver() : that._fnDomClick();
+			}
 			that._fnCollectionShow();
 			e.preventDefault();
 		} );
@@ -659,9 +744,10 @@ ColVis.prototype = {
 		var that = this, i, iLen;
 		var oPos = $(this.dom.button).offset();
 		var nHidden = this.dom.collection;
-		var nBackground = this.dom.background;
 		var iDivX = parseInt(oPos.left, 10);
 		var iDivY = parseInt(oPos.top + $(this.dom.button).outerHeight(), 10);
+		var nBackground = null;
+		this.s.bOverlay && (nBackground = this.dom.background);
 		
 		nHidden.style.top = iDivY+"px";
 		nHidden.style.left = iDivX+"px";
@@ -671,8 +757,12 @@ ColVis.prototype = {
 		var iWinHeight = $(window).height(), iDocHeight = $(document).height(),
 		 	iWinWidth = $(window).width(), iDocWidth = $(document).width();
 		
-		nBackground.style.height = ((iWinHeight>iDocHeight)? iWinHeight : iDocHeight) +"px";
-		nBackground.style.width = ((iWinWidth<iDocWidth)? iWinWidth : iDocWidth) +"px";
+		if(this.s.bOverlay)
+		{
+			nBackground.style.height = ((iWinHeight>iDocHeight)? iWinHeight : iDocHeight) +"px";
+			nBackground.style.width = ((iWinWidth<iDocWidth)? iWinWidth : iDocWidth) +"px";
+			document.body.appendChild( nBackground );
+		}
 		
 		var oStyle = this.dom.catcher.style;
 		oStyle.height = $(this.dom.button).outerHeight()+"px";
@@ -680,7 +770,6 @@ ColVis.prototype = {
 		oStyle.top = oPos.top+"px";
 		oStyle.left = iDivX+"px";
 		
-		document.body.appendChild( nBackground );
 		document.body.appendChild( nHidden );
 		document.body.appendChild( this.dom.catcher );
 		
@@ -711,36 +800,38 @@ ColVis.prototype = {
 		/* Visual corrections to try and keep the collection visible */
 		nHidden.style.left = this.s.sAlign=="left" ?
 			iDivX+"px" : (iDivX-$(nHidden).outerWidth()+$(this.dom.button).outerWidth())+"px";
-		
+
 		var iDivWidth = $(nHidden).outerWidth();
 		var iDivHeight = $(nHidden).outerHeight();
-		
+
 		if ( iDivX + iDivWidth > iDocWidth )
 		{
 			nHidden.style.left = (iDocWidth-iDivWidth)+"px";
 		}
-		
-		
+
+
 		/* This results in a very small delay for the end user but it allows the animation to be
 		 * much smoother. If you don't want the animation, then the setTimeout can be removed
 		 */
-		setTimeout( function () {
-			$(nHidden).animate({"opacity": 1}, that.s.iOverlayFade);
-			$(nBackground).animate({"opacity": 0.1}, that.s.iOverlayFade, 'linear', function () {
-				/* In IE6 if you set the checked attribute of a hidden checkbox, then this is not visually
-				 * reflected. As such, we need to do it here, once it is visible. Unbelievable.
-				 */
-				if ( jQuery.browser.msie && jQuery.browser.version == "6.0" )
-				{
-					that._fnDrawCallback();
-				}
-			});
-		}, 10 );
-		
+		if(this.s.bOverlay)
+		{
+			setTimeout( function () {
+				$(nBackground).animate({"opacity": 0.1}, that.s.iOverlayFade, 'linear', function () {
+					/* In IE6 if you set the checked attribute of a hidden checkbox, then this is not visually
+						* reflected. As such, we need to do it here, once it is visible. Unbelievable.
+						*/
+					if ( jQuery.browser.msie && jQuery.browser.version == "6.0" )
+					{
+						that._fnDrawCallback();
+					}
+				});
+			}, 10 );
+		}
+		$(nHidden).animate({"opacity": 1}, that.s.iOverlayFade);
 		this.s.hidden = false;
 	},
-	
-	
+
+
 	/**
 	 * Hide the show / hide list and the background
 	 *  @method  _fnCollectionHide
@@ -754,15 +845,22 @@ ColVis.prototype = {
 		if ( !this.s.hidden && this.dom.collection !== null )
 		{
 			this.s.hidden = true;
-			
+
 			$(this.dom.collection).animate({"opacity": 0}, that.s.iOverlayFade, function (e) {
 				this.style.display = "none";
 			} );
-			
-			$(this.dom.background).animate({"opacity": 0}, that.s.iOverlayFade, function (e) {
-				document.body.removeChild( that.dom.background );
+
+			if(this.s.bOverlay)
+			{
+				$(this.dom.background).animate({"opacity": 0}, that.s.iOverlayFade, function (e) {
+					document.body.removeChild( that.dom.background );
+					document.body.removeChild( that.dom.catcher );
+				});
+			}
+			else
+			{
 				document.body.removeChild( that.dom.catcher );
-			} );
+			}
 		}
 	}
 };
